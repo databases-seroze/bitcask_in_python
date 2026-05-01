@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["bitcask", "key-value", "storage-engine", "database"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 1 - Beta",
     "Intended Audience :: Education",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
