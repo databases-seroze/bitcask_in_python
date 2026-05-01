@@ -106,9 +106,18 @@ Do we need wal here ?
 Further goals
 
   Locking — a lockfile in the data directory so only one OS process opens the database at a time. Without this, two processes appending to the same file corrupt it.
+    - We can use flock in python, it is a kernel level lock that gets reset after reboot. We create a file called bitcask.lock, when second process tries to open it it sees file already created but then it'll fail to acquire the lock over the same inode. This file will remain after crash it's just that atmost only one process will have exclusive-access to this files node. when the process holding the lock gets crashed kernal automatically releases the lock. 
+  
   Thread safety — read-write locks around the keydir and active file. Our implementation would break under concurrent access from multiple threads.
+    - We can have read-write locks around get(), put(), delete() and compact() 
+    
   Expiry/TTL — records can have a time-to-live. Expired entries are treated as dead during compaction and skipped on reads.
-  Merge triggers — a background process that periodically checks dead ratios and triggers compaction automatically, with configurable schedules, window policies (e.g., only compact during off-peak hours), and rate limiting to avoid I/O storms.
+    - introduce another timestamp filed and have another flag to represent it's an expiry type record 
+    
+  Merge triggers — a background process that periodically checks dead ratios and triggers compaction automatically, with configurable schedules,    window policies (e.g., only compact during off-peak hours), and rate limiting to avoid I/O storms.
+    
   Erlang NIF integration — Riak's Bitcask is written in Erlang with C NIFs for the hot path (CRC, keydir lookups). Our pure Python implementation would be orders of magnitude slower.
+
   Crash-safe compaction — if the process dies mid-compaction, Riak can detect the incomplete merged file on recovery and discard it. We don't handle that.
+
   I/O scheduling — production systems use O_DIRECT, fadvise, and careful buffer management. We're going through Python's buffered I/O, which adds overhead and unpredictability.
