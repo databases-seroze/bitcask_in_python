@@ -74,5 +74,26 @@ Dependency graph (no circular deps):
                                       ←  recovery  ←  bitcask
                                       ←  compaction ←─┘
                 keydir  ←─────────────────────────────┘
-                
-                
+              
+---------------------------------------------------------------------------
+
+Why rotate at 256MB instead of one giant file?
+  Several reasons:
+    Compaction becomes impossible. Compaction works on immutable files — the active file is never compacted. If you never rotate, you have exactly one file that's always active, and it grows forever. All the dead records just accumulate with no way to reclaim them. The database only grows, never shrinks.
+    Recovery gets slower over time. On startup, the active file has no hint file, so recovery must scan it record by record. A 50GB active file means reading 50GB sequentially on every restart. With rotation, the active file is at most 256MB — older files have hint files and recover in milliseconds.
+    Filesystem limitations. Some filesystems degrade with very large files — metadata operations, fsync latency, and seek times can all get worse. ext4 supports up to 16TB files, but that doesn't mean it's efficient at that size.
+    fsync cost scales with file size. On some filesystems, fsync flushes all dirty pages for the file, not just the ones you just wrote. A larger file means more dirty page tracking overhead.
+    Concurrent reads during compaction. If compaction needs to read an old file while the active file is being written to, smaller files mean less contention and faster compaction passes.
+    The 256MB threshold is a balance — large enough that you're not creating thousands of tiny files (which has its own overhead in file descriptor usage and directory scanning), small enough that no single file becomes a bottleneck.
+
+---------------------------------------------------------------------------
+
+Further goals
+
+  Locking — a lockfile in the data directory so only one OS process opens the database at a time. Without this, two processes appending to the same file corrupt it.
+  Thread safety — read-write locks around the keydir and active file. Our implementation would break under concurrent access from multiple threads.
+  Expiry/TTL — records can have a time-to-live. Expired entries are treated as dead during compaction and skipped on reads.
+  Merge triggers — a background process that periodically checks dead ratios and triggers compaction automatically, with configurable schedules, window policies (e.g., only compact during off-peak hours), and rate limiting to avoid I/O storms.
+  Erlang NIF integration — Riak's Bitcask is written in Erlang with C NIFs for the hot path (CRC, keydir lookups). Our pure Python implementation would be orders of magnitude slower.
+  Crash-safe compaction — if the process dies mid-compaction, Riak can detect the incomplete merged file on recovery and discard it. We don't handle that.
+  I/O scheduling — production systems use O_DIRECT, fadvise, and careful buffer management. We're going through Python's buffered I/O, which adds overhead and unpredictability.
