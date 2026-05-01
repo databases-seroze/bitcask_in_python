@@ -123,6 +123,29 @@ Do we need wal here ?
 
 ---------------------------------------------------------------------------
 
+Atomic batch (transaction)
+  All-or-nothing. Either all 100 records are visible after recovery, or none are. This is what the client actually wants when they say "batch."
+  The standard way to implement this in a log-structured store is a batch marker:
+  Record layout with batch support:
+  
+  ┌─────┬────┬───────┬──────────┬──────┬─────────────┬─────┬───────┐
+  │ CRC │ TS │ Flags │ Key Size │ Val  │ Batch ID    │ Key │ Value │
+  │     │    │       │          │ Size │ (optional)  │     │       │
+  └─────┴────┴───────┴──────────┴──────┴─────────────┘─────┴───────┘
+  
+  Flags:
+    bit 0: tombstone
+    bit 1: part of a batch
+    bit 2: batch commit marker
+  Then a batch of 3 records looks like this on disk:
+  [record: key=a, flags=BATCH, batch_id=7]
+  [record: key=b, flags=BATCH, batch_id=7]
+  [record: key=c, flags=BATCH, batch_id=7]
+  [commit marker: flags=BATCH|COMMIT, batch_id=7]   ← the magic record
+  fsync
+  During recovery, the rule is simple: scan forward, collect records tagged with a batch ID, but don't add them to the keydir until you see the matching commit marker. If you reach EOF or a corrupt record before seeing the commit marker, discard the entire batch:
+---------------------------------------------------------------------------
+
 Further goals
 
   Locking — a lockfile in the data directory so only one OS process opens the database at a time. Without this, two processes appending to the same file corrupt it.
