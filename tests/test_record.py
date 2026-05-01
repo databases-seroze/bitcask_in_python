@@ -16,7 +16,7 @@ def test_record_encode_decode():
     assert not decoded.is_tombstone
      
     # Tombstone
-    t = Record.tombstone(b"hello")
+    t = Record.last_valid_offset(b"hello")
     t_enc = t.encode()
     t_dec = Record.decode(t_enc)
     assert t_dec.validate_checksum()
