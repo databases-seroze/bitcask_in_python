@@ -88,6 +88,21 @@ Why rotate at 256MB instead of one giant file?
 
 ---------------------------------------------------------------------------
 
+Do we need wal here ?
+
+  In a traditional database (like PostgreSQL or SQLite), you have two separate structures: the actual data pages (B-tree, heap, etc.) and a WAL that logs changes before they're applied to those pages. The WAL exists because writes to the data pages are in-place — if you crash mid-update of a B-tree node, the page is half-written and corrupted. The WAL lets you replay or undo that partial write on recovery.
+  Bitcask doesn't have this problem because it never modifies existing data. Every write is an append to the end of the active file. The worst that can happen on a crash is a partial record at the tail — which our recovery detects via CRC and truncates. The data before that point is untouched and intact.
+
+  So the append-only data file gives you the same durability guarantee a WAL would:
+  
+    Atomicity — a record is either fully written (valid CRC) or it isn't (truncated on recovery). No partial state.
+    Durability — fsync after each append ensures the record is on disk before we return to the caller.
+    Recovery — scan forward, validate CRCs, stop at corruption. Exactly what a WAL replay does.
+  
+  This is actually one of the key insights of log-structured designs — by making the data format itself sequential and append-only, you eliminate the need for a separate write-ahead log. LSM-trees (LevelDB, RocksDB) do use a WAL, but only because their memtable is an in-memory structure that would be lost on crash. The WAL there replays into the memtable. In Bitcask, the keydir (our "memtable") is fully reconstructable from the data files, so there's nothing to replay.
+
+---------------------------------------------------------------------------
+
 Further goals
 
   Locking — a lockfile in the data directory so only one OS process opens the database at a time. Without this, two processes appending to the same file corrupt it.
