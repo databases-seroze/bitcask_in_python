@@ -103,6 +103,26 @@ Do we need wal here ?
 
 ---------------------------------------------------------------------------
 
+  fsync(fd):
+    1. Find all dirty pages for this file
+       → Page 1 [dirty], Page 5 [dirty], Page 12 [dirty]
+  
+    2. Submit write I/O for each
+       → write page 1 to SSD
+       → write page 5 to SSD
+       → write page 12 to SSD
+  
+    3. Send cache flush command to SSD
+       → SSD moves data from its DRAM to NAND
+  
+    4. Wait for all confirmations
+  
+    5. Mark pages as [clean]
+  
+    6. Return to your code
+
+---------------------------------------------------------------------------
+
 Further goals
 
   Locking — a lockfile in the data directory so only one OS process opens the database at a time. Without this, two processes appending to the same file corrupt it.
